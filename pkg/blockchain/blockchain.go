@@ -16,18 +16,25 @@ type Service interface {
 	GetBlockchain() Blockchain
 }
 
+const (
+	blocksToSetDifficulty     = 5
+	timeToDetermineDifficulty = 30 * time.Second
+)
+
 type blockchain struct {
-	log                 *logrus.Entry
-	version             string
-	blockchain          Blockchain
-	targetLeadingZeroes int
+	log                      *logrus.Entry
+	version                  string
+	blockchain               Blockchain
+	targetLeadingZeroes      int
+	successfullyHashedBlocks int
+	lastDifficultySet        time.Time
 }
 
 func NewBlockchain(log *logrus.Entry, version string) (Service, error) {
 	log.Info("Creating new BlockchainInstance")
-	tlz, err := config.GetEnvInt(config.LEADING_ZEROES)
+	tlz, err := config.GetEnvInt(config.STARTING_LEADING_ZEROES)
 	if err != nil {
-		log.WithError(err).Error("Unable to get target leading zeroes from ENV")
+		log.WithError(err).Error("Unable to get starting target leading zeroes from ENV")
 		return nil, err
 	}
 	genesisBlock := Block{
@@ -42,10 +49,12 @@ func NewBlockchain(log *logrus.Entry, version string) (Service, error) {
 	chain := append(Blockchain{}, genesisBlock)
 
 	return &blockchain{
-		log:                 log,
-		version:             version,
-		blockchain:          chain,
-		targetLeadingZeroes: tlz,
+		log:                      log,
+		version:                  version,
+		blockchain:               chain,
+		targetLeadingZeroes:      tlz,
+		successfullyHashedBlocks: 0,
+		lastDifficultySet:        time.Now(),
 	}, nil
 }
 
@@ -63,18 +72,23 @@ func (b *blockchain) InsertDataBlock(data BlockData) error {
 		return err
 	}
 	b.log.Info("Block generated")
-	if b.isBlockValid(newBlock, b.blockchain[chainlen-1]) {
-		b.log.Info("Block is Valid")
-		newBlockchain := append(b.blockchain, newBlock)
-		b.replaceChain(newBlockchain)
+	if !b.isBlockValid(newBlock, b.blockchain[chainlen-1]) {
+		return fmt.Errorf("Block Not Valid")
 	}
+
+	//add the block to the ones that were successfully hashed
+	b.successfullyHashedBlocks = b.successfullyHashedBlocks + 1
+	b.log.WithField("generated_blocks", b.successfullyHashedBlocks).Info("Block is Valid")
+	newBlockchain := append(b.blockchain, newBlock)
+	b.replaceChain(newBlockchain)
+	b.setDifficulty()
 
 	return nil
 }
 
 //calculateHash calculates our Block's hash
 func (b *blockchain) calculateHash(block Block) (string, error) {
-	b.log.WithField("block", block).Info("Calculating Hash for Block")
+	b.log.Info("Calculating Hash for Block")
 	dataBytes, err := json.Marshal(block.Data)
 	if err != nil {
 		b.log.WithError(err).Error("Unable to Marshal Block Data")
@@ -171,4 +185,28 @@ func (b *blockchain) hashCompliesWithRule(hash string) bool {
 	}
 	le.Info("Hash successfully complies with target leading zeroes!")
 	return true
+}
+
+func (b *blockchain) setDifficulty() {
+	if b.successfullyHashedBlocks >= blocksToSetDifficulty {
+		b.successfullyHashedBlocks = 0
+		//we'll set the new difficulty.
+		b.log.WithField("block_limit_took_ms", time.Since(b.lastDifficultySet).Milliseconds()).
+			Info("Blocks limit reached, evaluating difficulty adjustment")
+		if time.Since(b.lastDifficultySet) >= timeToDetermineDifficulty {
+			//it was hard? decrease the difficulty
+			if b.targetLeadingZeroes > 1 {
+				b.targetLeadingZeroes = b.targetLeadingZeroes - 1
+				b.log.WithField("new_target_leading_zeroes", b.targetLeadingZeroes).Info("Difficulty Decreased")
+			} else {
+				b.log.Info("Difficulty already at minimum")
+			}
+
+		} else {
+			//it was easy? increase the difficulty
+			b.targetLeadingZeroes = b.targetLeadingZeroes + 1
+			b.log.WithField("new_target_leading_zeroes", b.targetLeadingZeroes).Info("Difficulty Increased")
+		}
+		b.lastDifficultySet = time.Now()
+	}
 }

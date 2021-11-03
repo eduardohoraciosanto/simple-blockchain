@@ -9,8 +9,8 @@ import (
 var serviceVersion = "local"
 
 const (
-	HTTP_PORT      = "HTTP_PORT"
-	LEADING_ZEROES = "LEADING_ZEROES"
+	HTTP_PORT               = "HTTP_PORT"
+	STARTING_LEADING_ZEROES = "STARTING_LEADING_ZEROES"
 )
 
 func GetVersion() string {
