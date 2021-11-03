@@ -19,13 +19,15 @@ func main() {
 	logrus.SetFormatter(&logrus.JSONFormatter{})
 	log := logrus.New()
 
-	svc := blockchain.NewBlockChain(
-		log.WithField("owner", "blockchain-service").Logger,
+	svc, err := blockchain.NewBlockchain(
+		log.WithField("owner", "blockchain-service"),
 		config.GetVersion(),
 	)
-
+	if err != nil {
+		log.WithError(err).Error("Unable to initialize blockchain service")
+	}
 	hsvc := health.NewService(
-		log.WithField("owner", "health-service").Logger,
+		log.WithField("owner", "health-service"),
 	)
 
 	httpTransportRouter := transport.NewHTTPRouter(svc, hsvc)

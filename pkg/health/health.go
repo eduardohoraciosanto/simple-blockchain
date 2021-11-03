@@ -7,11 +7,11 @@ type Service interface {
 	HealthCheck() (service bool, err error)
 }
 type svc struct {
-	log *logrus.Logger
+	log *logrus.Entry
 }
 
 //NewService gives a new Service
-func NewService(log *logrus.Logger) Service {
+func NewService(log *logrus.Entry) Service {
 	return &svc{
 		log: log,
 	}
@@ -19,5 +19,6 @@ func NewService(log *logrus.Logger) Service {
 
 //HealthCheck returns the status of the API and it's components
 func (s *svc) HealthCheck() (service bool, err error) {
+	s.log.Info("Performing Healthcheck")
 	return true, nil
 }

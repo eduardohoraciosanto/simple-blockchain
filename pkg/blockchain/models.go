@@ -4,6 +4,7 @@ type Block struct {
 	Index     int
 	Timestamp string
 	Data      BlockData
+	Nuance    int
 	Hash      string
 	PrevHash  string
 }
